@@ -1,15 +1,25 @@
 import streamlit as st
+import os
+import json
+
 from scoring import calculate_score
 from utils import get_grade
 from pdf_generator import generate_pdf
 from upi_parser import analyze_upi_csv
 
+VERIFICATION_FILE = "verification_status.json"
+
+if os.path.exists(VERIFICATION_FILE):
+    with open(VERIFICATION_FILE, "r") as f:
+        verification_data = json.load(f)
+else:
+    verification_data = {}
+
 st.set_page_config(page_title="TruCred", page_icon="💳")
-
 st.title("TruCred - Alternative Credit Scoring for All")
-st.write("Helping gig workers and students access trust-based financial profiles.")
+st.write("Home for India’s unscored population")
 
-#st.sidebar.image("assets/logo.png", use_column_width=True)
+# st.sidebar.image("assets/logo.png", use_column_width=True)
 st.sidebar.markdown("**Team:** Aryaman Jain & Imroz Saim Kamboj")
 
 # Form Inputs
@@ -32,17 +42,21 @@ with st.form("user_form"):
     reference_relationship = st.text_input("Relationship")
     reference_feedback = st.selectbox("How would they rate your financial behavior?", ["positive", "neutral", "negative"])
 
+    st.subheader("Upload Proofs")
+
+    rent_proof = st.file_uploader("Upload Rent Payment Proof", type=["pdf", "jpg", "png"], key="rent")
+    mobile_proof = st.file_uploader("Upload Mobile Recharge Proof", type=["pdf", "jpg", "png"], key="mobile")
+    utility_proof = st.file_uploader("Upload Utility Bill Proof", type=["pdf", "jpg", "png"], key="utility")
+
     submitted = st.form_submit_button("Generate Trust Score & PDF Report")
 
 if submitted:
-    # Analyze UPI CSV if uploaded
     upi_uploaded = False
     spending_consistent = False
     if upi_file is not None:
         upi_uploaded = True
         spending_consistent = analyze_upi_csv(upi_file)
 
-    # Prepare data dict
     data = {
         "rent_paid_on_time": rent_paid_on_time,
         "mobile_recharge": mobile_recharge,
@@ -52,11 +66,9 @@ if submitted:
         "reference_feedback": reference_feedback,
     }
 
-    # Calculate score and grade
     score = calculate_score(data)
     grade = get_grade(score)
 
-    # User data for PDF
     user_data = {
         "name": name,
         "email": email,
@@ -71,18 +83,47 @@ if submitted:
         "reference_feedback": reference_feedback,
     }
 
-    # Generate PDF
-    pdf_path = generate_pdf(user_data, score, grade)
+    # Save uploaded files
+    rent_key = mobile_key = utility_key = None
+    rent_status = mobile_status = utility_status = "Not uploaded"
 
-    # Show results
+    if rent_proof:
+        rent_key = f"Rent Proofs_{name}_{rent_proof.name}"
+        rent_path = f"uploads/rent/{rent_key.split('_', 1)[1]}"
+        with open(rent_path, "wb") as f:
+            f.write(rent_proof.getbuffer())
+        rent_status = verification_data.get(rent_key, "Pending")
+
+    if mobile_proof:
+        mobile_key = f"Mobile Recharge Proofs_{name}_{mobile_proof.name}"
+        mobile_path = f"uploads/mobile/{mobile_key.split('_', 1)[1]}"
+        with open(mobile_path, "wb") as f:
+            f.write(mobile_proof.getbuffer())
+        mobile_status = verification_data.get(mobile_key, "Pending")
+
+    if utility_proof:
+        utility_key = f"Utility Bill Proofs_{name}_{utility_proof.name}"
+        utility_path = f"uploads/utility/{utility_key.split('_', 1)[1]}"
+        with open(utility_path, "wb") as f:
+            f.write(utility_proof.getbuffer())
+        utility_status = verification_data.get(utility_key, "Pending")
+
+    # Show statuses
+    st.subheader("Document Verification Status")
+    st.write(f"Rent Proof: **{rent_status}**")
+    st.write(f"Mobile Recharge Proof: **{mobile_status}**")
+    st.write(f"Utility Bill Proof: **{utility_status}**")
+
+    # Generate and offer PDF download
+    pdf_path = generate_pdf(user_data, score, grade, rent_status, mobile_status, utility_status)
+
     st.success(f"Your Trust Score is {score}/100 with Grade '{grade}'")
     st.write("Download your Verified Financial Profile report below:")
 
     with open(pdf_path, "rb") as f:
-        pdf_bytes = f.read()
         st.download_button(
             label="Download PDF Report",
-            data=pdf_bytes,
+            data=f,
             file_name="TruCred_Financial_Report.pdf",
             mime="application/pdf",
         )
