@@ -1,94 +1,88 @@
 import streamlit as st
 import os
-from PIL import Image
 import json
 
-# Directory to save verification statuses
+st.set_page_config(page_title="TruCred Admin Dashboard", layout="centered")
+st.title("TruCred Admin Dashboard")
+
+# Constants
+UPLOAD_FOLDERS = {
+    "Rent Proofs": "uploads/rent",
+    "Mobile Recharge Proofs": "uploads/mobile",
+    "Utility Bill Proofs": "uploads/utility",
+}
 VERIFICATION_FILE = "verification_status.json"
 
-# Helper function to normalize status strings (remove emojis)
-def normalize_status(status_str):
-    if "✅" in status_str:
-        return "Verified"
-    elif "❌" in status_str:
-        return "Rejected"
-    return status_str # Returns "Pending" or already normalized strings
+# Ensure upload directories exist
+for folder in UPLOAD_FOLDERS.values():
+    os.makedirs(folder, exist_ok=True)
 
-# Load existing verifications
+# Load or initialize verification data
 if os.path.exists(VERIFICATION_FILE):
     with open(VERIFICATION_FILE, "r") as f:
-        verification_data_raw = json.load(f)
-    # Normalize existing data when loading
-    verification_data = {k: normalize_status(v) for k, v in verification_data_raw.items()}
+        verification_data = json.load(f)
 else:
     verification_data = {}
 
-st.title("TruCred Admin Document Review")
+# Admin UI
+st.header("Uploaded Documents Review")
 
-categories = {
-    "Rent Proofs": "uploads/rent",
-    "Mobile Recharge Proofs": "uploads/mobile",
-    "Utility Bill Proofs": "uploads/utility"
-}
+updated = False
+deleted = False
 
-for label, folder in categories.items():
-    st.subheader(label)
-    # Ensure the folder exists before trying to list its contents
-    if not os.path.exists(folder):
-        st.info(f"No uploads found yet for {label}.")
-        continue
+for proof_type, folder in UPLOAD_FOLDERS.items():
+    st.subheader(f"{proof_type}")
 
     files = os.listdir(folder)
-    # Filter out hidden files like .DS_Store if they exist
-    files = [f for f in files if not f.startswith('.')]
-
     if not files:
-        st.write("No files to review.")
-    else:
-        for file in files:
-            file_path = os.path.join(folder, file)
-            st.write(f"File: `{file}`")
-            ext = file.split('.')[-1].lower()
+        st.write("No files uploaded yet.")
+        continue
 
-            # Show preview for images
-            if ext in ['jpg', 'jpeg', 'png']:
-                st.image(file_path, width=300)
-            elif ext == "pdf":
-                # For PDF, provide a clickable link to view the file
-                st.markdown(f"[View PDF]({file_path})", unsafe_allow_html=True)
-            else:
-                st.write(f"No preview available for .{ext} files.")
+    for filename in files:
+        filepath = os.path.join(folder, filename)
+        key = f"{proof_type}_{filename}"
+        current_status = verification_data.get(key, "Pending")
 
+        with st.expander(f"{filename}"):
+            st.write(f"**Current Status:** {current_status}")
 
-            key = f"{label}_{file}"
-            # Retrieve the current status, defaulting to "Pending" if not found
-            current_status_for_display = verification_data.get(key, "Pending")
+            with open(filepath, "rb") as f:
+                st.download_button(
+                    label="Download File",
+                    data=f,
+                    file_name=filename,
+                    mime="application/octet-stream",
+                    key=f"download_{key}"
+                )
 
-            # Determine the index for the radio button based on the normalized status
-            options = ["Pending", "Verified", "Rejected"]
-            try:
-                # Use the normalized status to find its index in the options list
-                selected_index = options.index(current_status_for_display)
-            except ValueError:
-                # Fallback if somehow current_status_for_display isn't one of the expected options
-                selected_index = 0 # Default to "Pending"
-
-            st.write(f"**Current Status:** {current_status_for_display}")
-
-            # The st.radio widget will now display and return values without emojis
-            status = st.radio(
-                "Mark status:",
-                options,
-                index=selected_index,
-                key=key
+            new_status = st.selectbox(
+                f"Update Status for {filename}",
+                options=["Pending", "Verified", "Rejected"],
+                index=["Pending", "Verified", "Rejected"].index(current_status),
+                key=f"status_select_{key}"
             )
 
-            # Save updated status (which will now be emoji-free)
-            verification_data[key] = status
+            if new_status != current_status:
+                verification_data[key] = new_status
+                updated = True
 
-            st.markdown("---")
+            if st.button(f"Delete File: {filename}", key=f"delete_{key}"):
+                try:
+                    os.remove(filepath)
+                    verification_data.pop(key, None)
+                    deleted = True
+                    st.warning(f"{filename} deleted.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error deleting file: {e}")
 
-# Save to JSON
-# Ensure we save the normalized data back to the file
-with open(VERIFICATION_FILE, "w") as f:
-    json.dump(verification_data, f, indent=2)
+# Save changes if any
+if updated or deleted:
+    with open(VERIFICATION_FILE, "w") as f:
+        json.dump(verification_data, f, indent=2)
+
+if updated:
+    st.success("Verification status updated successfully!")
+
+if not updated and not deleted:
+    st.info("No changes made to verification statuses.")
