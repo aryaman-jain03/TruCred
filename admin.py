@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import json
+from datetime import datetime
 
 st.set_page_config(page_title="TruCred Admin Dashboard", layout="centered")
 st.title("TruCred Admin Dashboard")
@@ -24,6 +25,19 @@ if os.path.exists(VERIFICATION_FILE):
 else:
     verification_data = {}
 
+# Upgrade old string-based statuses to dict format
+for key, value in list(verification_data.items()):
+    if isinstance(value, str):
+        verification_data[key] = {
+            "status": value,
+            "uploaded_at": datetime.now().isoformat(),
+            "verified_at": None
+        }
+
+# Sidebar filters
+st.sidebar.header("Filters")
+status_filter = st.sidebar.selectbox("Filter by Status", ["All", "Pending", "Verified", "Rejected"])
+
 # Admin UI
 st.header("Uploaded Documents Review")
 
@@ -32,8 +46,8 @@ deleted = False
 
 for proof_type, folder in UPLOAD_FOLDERS.items():
     st.subheader(f"{proof_type}")
-
     files = os.listdir(folder)
+
     if not files:
         st.write("No files uploaded yet.")
         continue
@@ -41,10 +55,36 @@ for proof_type, folder in UPLOAD_FOLDERS.items():
     for filename in files:
         filepath = os.path.join(folder, filename)
         key = f"{proof_type}_{filename}"
-        current_status = verification_data.get(key, "Pending")
+        file_entry = verification_data.get(key)
+
+        # Initialize entry if missing or improperly formatted
+        if isinstance(file_entry, str):
+            file_entry = {
+                "status": file_entry,
+                "uploaded_at": datetime.now().isoformat(),
+                "verified_at": None
+            }
+            verification_data[key] = file_entry
+            updated = True
+        elif not file_entry:
+            file_entry = {
+                "status": "Pending",
+                "uploaded_at": datetime.now().isoformat(),
+                "verified_at": None
+            }
+            verification_data[key] = file_entry
+            updated = True
+
+        current_status = file_entry["status"]
+
+        # Filter files
+        if status_filter != "All" and current_status != status_filter:
+            continue
 
         with st.expander(f"{filename}"):
-            st.write(f"**Current Status:** {current_status}")
+            st.markdown(f"**Status:** {current_status}")
+            st.markdown(f"**Uploaded At:** {file_entry.get('uploaded_at', 'N/A')}")
+            st.markdown(f"**Verified At:** {file_entry.get('verified_at', 'Not verified yet')}")
 
             with open(filepath, "rb") as f:
                 st.download_button(
@@ -63,7 +103,12 @@ for proof_type, folder in UPLOAD_FOLDERS.items():
             )
 
             if new_status != current_status:
-                verification_data[key] = new_status
+                file_entry["status"] = new_status
+                if new_status == "Verified":
+                    file_entry["verified_at"] = datetime.now().isoformat()
+                else:
+                    file_entry["verified_at"] = None
+                verification_data[key] = file_entry
                 updated = True
 
             if st.button(f"Delete File: {filename}", key=f"delete_{key}"):
@@ -76,13 +121,13 @@ for proof_type, folder in UPLOAD_FOLDERS.items():
                 except Exception as e:
                     st.error(f"Error deleting file: {e}")
 
-# Save changes if any
+# Save verification status
 if updated or deleted:
     with open(VERIFICATION_FILE, "w") as f:
         json.dump(verification_data, f, indent=2)
 
 if updated:
-    st.success("Verification status updated successfully!")
+    st.success("Verification statuses updated successfully!")
 
 if not updated and not deleted:
     st.info("No changes made to verification statuses.")

@@ -37,7 +37,7 @@ def generate_pdf(user_data, score, grade,
     pdf.ln(10)
 
     pdf.set_font("Arial", size=12)
-    pdf.cell(0, 10, f"Rent Paid On Time (months): {safe_text(user_data['rent_paid_on_time'])}", ln=True)
+    pdf.cell(0, 10, f"Timely EMI/Recurring Payments (Months): {user_data['rent_paid_on_time']}", ln=True)
     pdf.cell(0, 10, f"Mobile Recharge Regular: {safe_text(user_data['mobile_recharge'])}", ln=True)
     pdf.cell(0, 10, f"Utility Bill in Name: {safe_text(user_data['utility_bill'])}", ln=True)
     pdf.cell(0, 10, f"UPI File Uploaded: {safe_text(user_data['upi_uploaded'])}", ln=True)
@@ -54,7 +54,7 @@ def generate_pdf(user_data, score, grade,
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 10, "Document Verification Status", ln=True)
     pdf.set_font("Arial", size=12)
-    pdf.cell(0, 10, f"Rent Proof: {safe_text(rent_status)}", ln=True)
+    pdf.cell(0, 10, f"Recurring Payment Proof: {safe_text(rent_status)}", ln=True)
     pdf.cell(0, 10, f"Mobile Recharge Proof: {safe_text(mobile_status)}", ln=True)
     pdf.cell(0, 10, f"Utility Bill Proof: {safe_text(utility_status)}", ln=True)
 
